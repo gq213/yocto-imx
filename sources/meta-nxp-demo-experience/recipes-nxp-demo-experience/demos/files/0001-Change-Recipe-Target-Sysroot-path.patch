@@ -1,0 +1,40 @@
+diff --git a/Makefile b/Makefile
+index d246a2a..e835177 100644
+--- a/Makefile
++++ b/Makefile
+@@ -3,10 +3,10 @@ BLDDIR=build
+ TEST_FILES= \
+ 	BTPVA_action_executor.c
+ 
+-IFLAGS=-I/${OECORE_TARGET_SYSROOT}/usr/include/glib-2.0 \
+-       -I/${OECORE_TARGET_SYSROOT}/usr/lib/glib-2.0/include -lglib-2.0 \
+-       -I/${OECORE_TARGET_SYSROOT}/usr/include/dbus-1.0/ \
+-       -I/${OECORE_TARGET_SYSROOT}/usr/lib/dbus-1.0/include/
++IFLAGS=-I../recipe-sysroot/usr/include/glib-2.0 \
++       -I../recipe-sysroot${libdir}/glib-2.0/include -lglib-2.0 \
++       -I../recipe-sysroot/usr/include/dbus-1.0/ \
++       -I../recipe-sysroot${libdir}/dbus-1.0/include/
+ 
+ CFLAGS=-std=gnu99 \
+ 	 -Wno-unused-variable \
+@@ -49,6 +49,8 @@ $(BLDDIR)/.mkdir :
+ 
+ $(EXE) : $(EXE_OBJ_FILES)
+ 	$(CC) $(CFLAGS)  $^  \
++		-L../recipe-sysroot${libdir} -ldbus-1 \
++		-lglib-2.0 \
+ 	 -lm  \
+ 	  -o $@
+
+diff --git a/BTPVA_action_executor.c b/BTPVA_action_executor.c
+index 9c89eb6..212e9e2 100644
+--- a/BTPVA_action_executor.c
++++ b/BTPVA_action_executor.c
+@@ -155,6 +155,7 @@ static void BTPVA_call_custom(int WW, int cmd) {
+     break;
+   case 8: /* STOP PLAYER */
+     popen("pkill Btplayer", R_MODE);
++    system("/home/root/.nxp-demo-experience/scripts/multimedia/btplayerdemo/stop.sh");
+     break;
+   case 9: /* START PLAYER */
+     popen("/home/root/.nxp-demo-experience/scripts/multimedia/btplayerdemo/Btplayer -platform wayland &", R_MODE);
