@@ -1,0 +1,38 @@
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1          131136         2228287   1024.0 MiB  8300  boot
+   2         2228288        19005503   8.0 GiB     8300  rootfs
+
+# The disk layout used is:
+#  --------- ---------- ------- -------- ------------ -------------- 
+# | mbr/gpt | imx-boot |  env  |  rsvd  |   p1_boot  |   p2_rootfs  |
+#  --------- ---------- ------- -------- ------------ -------------- 
+# ^         ^          ^       ^        ^            ^              ^
+# |   32k   |  7136k   |  16k  |        |    1024M   |      8G      |
+# 0        32k       7168k   7184k     64M         1088M          9280M
+
+CONFIG_ENV_SIZE=0x4000			//      16k,   32 sectors,16384
+CONFIG_ENV_OFFSET=0x700000		// 7M,7168k,14336 sectors,7340032
+
+sudo hexdump /dev/sdd -s 7340032 -n 16384
+sudo dd if=/dev/zero of=/dev/sdd bs=1k seek=7168 count=16
+
+sudo dd if=imx-boot of=/dev/sdd bs=1k seek=32 && sync
+
+sudo mkfs.vfat /dev/sdd1
+mkdir /tmp/sdd1
+sudo mount /dev/sdd1 /tmp/sdd1
+sudo cp imx8mp-gq_k.dtb /tmp/sdd1/
+sudo cp Image /tmp/sdd1/
+sudo umount /dev/sdd1
+
+sudo mkfs.ext4 /dev/sdd2
+mkdir /tmp/sdd2
+sudo mount /dev/sdd2 /tmp/sdd2
+sudo tar -xf imx-image-full-imx8mp-gq.tar.xz -C /tmp/sdd2
+sudo tar -I zstd -xvf imx-image-full-imx8mp-gq.tar.zst -C /tmp/sdd2
+sudo umount /dev/sdd2
+
+官方推荐方式
+zstdcat <image_name>.wic.zst | sudo dd of=/dev/sd<partition> bs=1M conv=fsync
+sudo dd if=<image name>.wic of=/dev/sdx bs=1M && sync

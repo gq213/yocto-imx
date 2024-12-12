@@ -1,0 +1,10 @@
+[Unit]
+Description=insmod *.ko
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=insmod /lib/modules/8188eu.ko
+
+[Install]
+WantedBy=multi-user.target

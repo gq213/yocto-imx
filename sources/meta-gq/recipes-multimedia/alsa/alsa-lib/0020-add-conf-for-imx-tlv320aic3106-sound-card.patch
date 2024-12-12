@@ -1,0 +1,75 @@
+diff -urN old/src/conf/cards/aliases.conf new/src/conf/cards/aliases.conf
+--- old/src/conf/cards/aliases.conf	2024-11-30 11:22:03.101313000 +0800
++++ new/src/conf/cards/aliases.conf	2024-11-30 00:02:35.616867000 +0800
+@@ -62,6 +62,8 @@
+ ak4458-audio cards.AK4458
+ imx-audio-xcvr cards.IMX-XCVR
+ imx-cs42448 cards.CS42448
++simple-card cards.IMX-TLV320AIC3x
++audio-hdmi cards.IMX-HDMI
+ 
+ <confdir:ctl/default.conf>
+ <confdir:pcm/default.conf>
+diff -urN old/src/conf/cards/IMX-TLV320AIC3x.conf new/src/conf/cards/IMX-TLV320AIC3x.conf
+--- old/src/conf/cards/IMX-TLV320AIC3x.conf	1970-01-01 08:00:00.000000000 +0800
++++ new/src/conf/cards/IMX-TLV320AIC3x.conf	2024-11-29 23:24:29.755063000 +0800
+@@ -0,0 +1,46 @@
++#
++# Configuration for TLV320AIC3x driver
++#
++
++# default with dmix+softvol & dsnoop+softvol
++IMX-TLV320AIC3x.pcm.default {
++	@args [ CARD ]
++	@args.CARD {
++		type string
++	}
++	type asym
++	playback.pcm {
++		type plug
++		slave.pcm {
++			type softvol
++			slave.pcm {
++				@func concat
++				strings [ "dmix:" $CARD ]
++			}
++			control {
++				name "TLV320AIC3x Playback Volume"
++				card $CARD
++			}
++			min_dB -6.0
++			max_dB 14.0
++			resolution 21
++		}
++	}
++	capture.pcm {
++		type plug
++		slave.pcm {
++			type softvol
++			slave.pcm {
++				@func concat
++				strings [ "dsnoop:" $CARD ]
++			}
++			control {
++				name "TLV320AIC3x Capture Volume"
++				card $CARD
++			}
++			min_dB -6.0
++			max_dB 14.0
++			resolution 21
++		}
++	}
++}
+diff -urN old/src/conf/cards/Makefile.am new/src/conf/cards/Makefile.am
+--- old/src/conf/cards/Makefile.am	2024-11-30 11:22:03.101313000 +0800
++++ new/src/conf/cards/Makefile.am	2024-12-07 20:02:29.923060304 +0800
+@@ -63,7 +63,8 @@
+ 	IMX-HDMI.conf \
+ 	AK4458.conf \
+ 	IMX-XCVR.conf \
+-	CS42448.conf
++	CS42448.conf \
++	IMX-TLV320AIC3x.conf
+ 
+ if BUILD_ALISP
+ cfg_files += aliases.alisp

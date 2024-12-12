@@ -1,0 +1,258 @@
+From af8523ad74b39da7bdee7cbf53a76746bab0e8f4 Mon Sep 17 00:00:00 2001
+From: gq213 <gaoqiang1211@gmail.com>
+Date: Wed, 20 Nov 2024 22:29:57 +0800
+Subject: [PATCH] modify url
+
+---
+ .../lite/cmake/DownloadPThreadPool.cmake      |   2 +-
+ .../lite/tools/cmake/modules/eigen.cmake      |   2 +-
+ .../lite/tools/cmake/modules/xnnpack.cmake    |   2 +-
+ .../xnnpack/patches/0001-modify-url.patch     | 160 ++++++++++++++++++
+ tensorflow/workspace2.bzl                     |   4 +-
+ third_party/flatbuffers/workspace.bzl         |   2 +-
+ 6 files changed, 166 insertions(+), 6 deletions(-)
+ create mode 100644 tensorflow/lite/tools/cmake/modules/xnnpack/patches/0001-modify-url.patch
+
+diff --git a/tensorflow/lite/cmake/DownloadPThreadPool.cmake b/tensorflow/lite/cmake/DownloadPThreadPool.cmake
+index a44c518e8a9..4237be6a7ae 100644
+--- a/tensorflow/lite/cmake/DownloadPThreadPool.cmake
++++ b/tensorflow/lite/cmake/DownloadPThreadPool.cmake
+@@ -19,7 +19,7 @@ PROJECT(pthreadpool-download NONE)
+ 
+ INCLUDE(ExternalProject)
+ ExternalProject_Add(pthreadpool
+-  URL https://github.com/Maratyszcza/pthreadpool/archive/545ebe9f225aec6dca49109516fac02e973a3de2.zip
++  URL http://127.0.0.1/mydir/nxp/file/pthreadpool-545ebe9f225aec6dca49109516fac02e973a3de2.zip
+   URL_HASH SHA256=8461f6540ae9f777ce20d1c0d1d249e5e61c438744fb390c0c6f91940aa69ea3
+   SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source"
+   BINARY_DIR "${CMAKE_BINARY_DIR}/pthreadpool"
+diff --git a/tensorflow/lite/tools/cmake/modules/eigen.cmake b/tensorflow/lite/tools/cmake/modules/eigen.cmake
+index 2ce152ac08e..7f7ffe10a7f 100644
+--- a/tensorflow/lite/tools/cmake/modules/eigen.cmake
++++ b/tensorflow/lite/tools/cmake/modules/eigen.cmake
+@@ -24,7 +24,7 @@ include(OverridableFetchContent)
+ 
+ OverridableFetchContent_Declare(
+   eigen
+-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
++  GIT_REPOSITORY git://127.0.0.1/libeigen/eigen.git
+   GIT_TAG ${EIGEN_TAG}
+   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
+   # as cmake attempts to git checkout the commit hash after the clone
+diff --git a/tensorflow/lite/tools/cmake/modules/xnnpack.cmake b/tensorflow/lite/tools/cmake/modules/xnnpack.cmake
+index 624eca949c7..cdc76bc38a9 100644
+--- a/tensorflow/lite/tools/cmake/modules/xnnpack.cmake
++++ b/tensorflow/lite/tools/cmake/modules/xnnpack.cmake
+@@ -29,7 +29,7 @@ OverridableFetchContent_Declare(
+   GIT_PROGRESS TRUE
+   PREFIX "${CMAKE_BINARY_DIR}"
+   SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
+-  PATCH_COMMAND patch -p1 --forward < ${CMAKE_CURRENT_LIST_DIR}/xnnpack/patches/0001-Partial-changes-for-fixing-runtime-setup-issue.patch || true
++  PATCH_COMMAND patch -p1 --forward < ${CMAKE_CURRENT_LIST_DIR}/xnnpack/patches/0001-modify-url.patch || true
+ )
+ OverridableFetchContent_GetProperties(xnnpack)
+ if(NOT xnnpack_POPULATED)
+diff --git a/tensorflow/lite/tools/cmake/modules/xnnpack/patches/0001-modify-url.patch b/tensorflow/lite/tools/cmake/modules/xnnpack/patches/0001-modify-url.patch
+new file mode 100644
+index 00000000000..3b683cb9def
+--- /dev/null
++++ b/tensorflow/lite/tools/cmake/modules/xnnpack/patches/0001-modify-url.patch
+@@ -0,0 +1,160 @@
++From 309338405651e4ea09421504010ef1a798172dc1 Mon Sep 17 00:00:00 2001
++From: gq213 <gaoqiang1211@gmail.com>
++Date: Wed, 20 Nov 2024 22:20:59 +0800
++Subject: [PATCH] modify url
++
++---
++ cmake/DownloadFP16.cmake  |  2 +-
++ src/runtime.c             | 27 +++++++++++----------------
++ src/subgraph/even-split.c | 26 ++++++++++++--------------
++ 3 files changed, 24 insertions(+), 31 deletions(-)
++
++diff --git a/cmake/DownloadFP16.cmake b/cmake/DownloadFP16.cmake
++index f7c567017..c59592cda 100644
++--- a/cmake/DownloadFP16.cmake
+++++ b/cmake/DownloadFP16.cmake
++@@ -12,7 +12,7 @@ PROJECT(fp16-download NONE)
++ 
++ INCLUDE(ExternalProject)
++ ExternalProject_Add(fp16
++-  URL https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip
+++  URL http://127.0.0.1/mydir/nxp/file/FP16-0a92994d729ff76a58f692d3028ca1b64b145d91.zip
++   URL_HASH SHA256=e66e65515fa09927b348d3d584c68be4215cfe664100d01c9dbc7655a5716d70
++   SOURCE_DIR "${CMAKE_BINARY_DIR}/FP16-source"
++   BINARY_DIR "${CMAKE_BINARY_DIR}/FP16"
++diff --git a/src/runtime.c b/src/runtime.c
++index 0c4649017..d018743a7 100644
++--- a/src/runtime.c
+++++ b/src/runtime.c
++@@ -511,23 +511,18 @@ enum xnn_status xnn_setup_runtime(
++ 
++   for (size_t i = 0; i < runtime->num_ops; i++) {
++     const struct xnn_operator_data* opdata = &runtime->opdata[i];
++-    if (opdata->operator_objects[0] == NULL) {
++-      // Operator was removed during optimization
++-      continue;
++-    }
++-
++-    // Ensure that weights cache is finalized.
++-    struct xnn_weights_cache* weights_cache = opdata->operator_objects[0]->weights_cache;
++-    if (weights_cache != NULL && !xnn_weights_cache_is_finalized(weights_cache)) {
++-      xnn_log_error("weights cache needs to be finalized before setup/infer");
++-      return xnn_status_invalid_state;
++-    }
+++    for (size_t j = 0; j < XNN_MAX_OPERATOR_OBJECTS; j++) {
+++      if (opdata->operator_objects[j] == NULL) {
+++        // Operator was removed during optimization
+++        continue;
+++      }
++ 
++-    assert(opdata->setup != NULL);
++-    const enum xnn_status status = opdata->setup(opdata, runtime->blobs, runtime->num_blobs, runtime->threadpool);
++-    if (status != xnn_status_success) {
++-      xnn_log_error("failed to setup runtime: error in operator #%zu", i);
++-      return status;
+++      assert(opdata->setup != NULL);
+++      const enum xnn_status status = opdata->setup(opdata, runtime->blobs, runtime->num_blobs, runtime->threadpool);
+++      if (status != xnn_status_success) {
+++        xnn_log_error("failed to setup runtime: error in operator #%zu", i);
+++        return status;
+++      }
++     }
++   }
++ 
++diff --git a/src/subgraph/even-split.c b/src/subgraph/even-split.c
++index 6c360d9fd..e21ef9212 100644
++--- a/src/subgraph/even-split.c
+++++ b/src/subgraph/even-split.c
++@@ -250,7 +250,6 @@ static enum xnn_status setup_even_split_operator_helper(
++   const uint32_t num_blobs,
++   const struct xnn_operator_data* opdata,
++   size_t index,
++-  const size_t channels,
++   const void* input_data,
++   pthreadpool_t threadpool)
++ {
++@@ -261,12 +260,14 @@ static enum xnn_status setup_even_split_operator_helper(
++     return xnn_status_success;
++   }
++ 
+++  const size_t channels = opdata->operator_objects[index]->channels;
+++
++   assert(output_id < num_blobs);
++   const struct xnn_blob* output_blob = blobs + output_id;
++   void* output_data = output_blob->data;
++   assert(output_data != NULL);
++ 
++-  switch (opdata->operator_objects[0]->type) {
+++  switch (opdata->operator_objects[index]->type) {
++     #ifndef XNN_NO_F16_OPERATORS
++       case xnn_operator_type_copy_nc_x16: {
++         return xnn_setup_copy_nc_x16(
++@@ -305,14 +306,13 @@ static enum xnn_status setup_even_split2_operator(
++   const void* input_data = input_blob->data;
++   assert(input_data != NULL);
++ 
++-  const size_t channels = opdata->operator_objects[0]->channels;
++   enum xnn_status status = xnn_status_success;
++ 
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++@@ -335,18 +335,17 @@ static enum xnn_status setup_even_split3_operator(
++   const void* input_data = input_blob->data;
++   assert(input_data != NULL);
++ 
++-  const size_t channels = opdata->operator_objects[0]->channels;
++   enum xnn_status status = xnn_status_success;
++ 
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 2, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 2, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++@@ -369,22 +368,21 @@ static enum xnn_status setup_even_split4_operator(
++   const void* input_data = input_blob->data;
++   assert(input_data != NULL);
++ 
++-  const size_t channels = opdata->operator_objects[0]->channels;
++   enum xnn_status status = xnn_status_success;
++ 
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 0, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 1, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 2, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 2, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 3, channels, input_data, threadpool);
+++  status = setup_even_split_operator_helper(blobs, num_blobs, opdata, 3, input_data, threadpool);
++   if (status != xnn_status_success) {
++     return status;
++   }
++-- 
++2.25.1
++
+diff --git a/tensorflow/workspace2.bzl b/tensorflow/workspace2.bzl
+index 46ba3d69dca..33823692258 100644
+--- a/tensorflow/workspace2.bzl
++++ b/tensorflow/workspace2.bzl
+@@ -588,7 +588,7 @@ def _tf_repositories():
+ 
+     # LINT.IfChange
+     # Attention: TensorFlow Lite CMake build uses these variables, update only the URL and the checksum value.
+-    FFT2D_URL = "https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz"
++    FFT2D_URL = "http://127.0.0.1/mydir/nxp/file/fft2d-v1.0.tar.gz"
+     FFT2D_SHA256 = "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb"
+     tf_http_archive(
+         name = "fft2d",
+@@ -723,7 +723,7 @@ def _tf_repositories():
+ 
+     # LINT.IfChange
+     # Attention: TensorFlow Lite CMake parser processes these lines
+-    NEON2SSE_URL = "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/a15b489e1222b2087007546b4912e21293ea86ff.tar.gz"
++    NEON2SSE_URL = "http://127.0.0.1/mydir/nxp/file/ARM_NEON_2_x86_SSE-a15b489e1222b2087007546b4912e21293ea86ff.tar.gz"
+     NEON2SSE_SHA256 = "019fbc7ec25860070a1d90e12686fc160cfb33e22aa063c80f52b363f1361e9d"
+     tf_http_archive(
+         name = "arm_neon_2_x86_sse",
+diff --git a/third_party/flatbuffers/workspace.bzl b/third_party/flatbuffers/workspace.bzl
+index 42fbbecf38e..ed8f0dadc34 100644
+--- a/third_party/flatbuffers/workspace.bzl
++++ b/third_party/flatbuffers/workspace.bzl
+@@ -4,7 +4,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+ 
+ def repo():
+     # Attention: TensorFlow Lite CMake build uses these variables, update only the URL and the checksum value.
+-    FLATBUFFERS_URL = "https://github.com/google/flatbuffers/archive/v2.0.7.tar.gz"
++    FLATBUFFERS_URL = "http://127.0.0.1/mydir/nxp/file/flatbuffers-2.0.7.tar.gz"
+     FLATBUFFERS_SHA256 = "4c7986174dc3941220bf14feaacaad409c3e1526d9ad7f490366fede9a6f43fa"
+ 
+     tf_http_archive(
+-- 
+2.25.1
+

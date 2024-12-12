@@ -1,0 +1,41 @@
+diff -urN old/iMX8M/soc.mak new/iMX8M/soc.mak
+--- old/iMX8M/soc.mak	2024-11-10 10:14:41.755620000 +0800
++++ new/iMX8M/soc.mak	2024-11-10 10:14:49.077631000 +0800
+@@ -211,6 +211,18 @@
+ 	mkimage -E -p $(FIT_EXTERNAL_POSITION) -f u-boot-ddr4-evk.its u-boot-ddr4-evk.itb
+ 	@rm -f u-boot.its $(dtb_ddr4_evk)
+ 
++dtb_ddr4_gq = gqddr4.dtb
++$(dtb_ddr4_gq):
++	./$(DTB_PREPROC) $(PLAT)-gq.dtb $(dtb_ddr4_gq) $(dtbs)
++
++u-boot-ddr4-gq.itb: $(dtb_ddr4_gq) $(supp_dtbs)
++	./$(PAD_IMAGE) $(TEE)
++	./$(PAD_IMAGE) bl31.bin
++	./$(PAD_IMAGE) u-boot-nodtb.bin $(dtb_ddr4_gq) $(supp_dtbs)
++	DEK_BLOB_LOAD_ADDR=$(DEK_BLOB_LOAD_ADDR) TEE_LOAD_ADDR=$(TEE_LOAD_ADDR) ATF_LOAD_ADDR=$(ATF_LOAD_ADDR) ../$(SOC_DIR)/mkimage_fit_atf.sh $(dtb_ddr4_gq) $(supp_dtbs) > u-boot-ddr4-gq.its
++	mkimage -E -p $(FIT_EXTERNAL_POSITION) -f u-boot-ddr4-gq.its u-boot-ddr4-gq.itb
++	@rm -f u-boot-ddr4-gq.its $(dtb_ddr4_gq)
++
+ ifeq ($(HDMI),yes)
+ flash_evk: $(MKIMG) signed_hdmi_imx8m.bin u-boot-spl-ddr.bin u-boot.itb
+ 	./mkimage_imx8 -fit -signed_hdmi signed_hdmi_imx8m.bin -loader u-boot-spl-ddr.bin $(SPL_LOAD_ADDR) -second_loader u-boot.itb 0x40200000 0x60000 -out $(OUTIMG)
+@@ -238,6 +250,8 @@
+ 
+ flash_ddr4_evk: flash_ddr4_evk_no_hdmi
+ 
++flash_gq: flash_gq_no_hdmi
++
+ flash_ddr3l_evk: flash_ddr3l_evk_no_hdmi
+ 
+ flash_ddr3l_val: flash_ddr3l_val_no_hdmi
+@@ -302,6 +316,9 @@
+ flash_ddr4_evk_no_hdmi: $(MKIMG) u-boot-spl-ddr4.bin u-boot-ddr4-evk.itb
+ 	./mkimage_imx8 -version $(VERSION) -fit -loader u-boot-spl-ddr4.bin $(SPL_LOAD_ADDR) -second_loader u-boot-ddr4-evk.itb 0x40200000 0x60000 -out $(OUTIMG)
+ 
++flash_gq_no_hdmi: $(MKIMG) u-boot-spl-ddr4.bin u-boot-ddr4-gq.itb
++	./mkimage_imx8 -version $(VERSION) -fit -loader u-boot-spl-ddr4.bin $(SPL_LOAD_ADDR) -second_loader u-boot-ddr4-gq.itb 0x40200000 0x60000 -out $(OUTIMG)
++
+ flash_ddr4_evk_no_hdmi_dual_bootloader: $(MKIMG) u-boot-spl-ddr4.bin u-boot-ddr4-evk.itb
+ 	./mkimage_imx8 -version $(VERSION) -fit -loader u-boot-spl-ddr4.bin $(SPL_LOAD_ADDR) -out $(OUTIMG)
+ 	./mkimage_imx8 -fit_ivt u-boot-ddr4-evk.itb 0x40200000 0x0 -out u-boot-ivt.itb

@@ -1,0 +1,12 @@
+diff -urN old/src/timesync/timesyncd.conf.in new/src/timesync/timesyncd.conf.in
+--- old/src/timesync/timesyncd.conf.in	2024-12-07 14:21:09.077086000 +0800
++++ new/src/timesync/timesyncd.conf.in	2024-12-07 14:17:25.000000000 +0800
+@@ -13,7 +13,7 @@
+ # See timesyncd.conf(5) for details.
+ 
+ [Time]
+-#NTP=
++NTP=2.cn.pool.ntp.org ntp.tencent.com time.apple.com
+ #FallbackNTP={{NTP_SERVERS}}
+ #RootDistanceMaxSec=5
+ #PollIntervalMinSec=32

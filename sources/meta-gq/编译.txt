@@ -1,0 +1,47 @@
+1、选择板级，创建构建环境
+MACHINE=imx8mp-gq DISTRO=fsl-imx-xwayland source ./imx-setup-release.sh -b build-full
+1）修改sdk/build-full/conf/bblayers.conf，添加自定义layer
+BBLAYERS += "${BSPDIR}/sources/meta-gq"
+2）每次选择板级后，都要修改sdk/build-full/conf/local.conf
+多个板级配置可以共享
+DL_DIR ?= "/mnt/disk/nxp/downloads/"
+SSTATE_DIR ?= "${BSPDIR}/sstate-cache/"
+
+2、下载
+1）修改sdk/build-full/conf/local.conf
+同时下载的进程个数，加速下载
+BB_NUMBER_THREADS = '16'
+2）下载所有包
+bitbake imx-image-full --runall=fetch
+3）下载离线编译tf和onnx所需的包
+
+3、全部编译
+1）修改sdk/build-full/conf/local.conf
+根据cpu实际核心个数设置
+BB_NUMBER_THREADS = '4'
+PARALLEL_MAKE = '-j 5'
+2）开始编译
+bitbake imx-image-full
+3）如果编译未完成，后续继续编译，先导出环境变量，然后编译
+. ./setup-environment build-full
+bitbake imx-image-full
+
+4、编译工具链（可选）
+. ./setup-environment build-full
+bitbake meta-toolchain
+
+5、编译产物
+sdk/build-full/tmp/deploy
+deb
+images
+sdk
+
+
+images除rootfs以外，还有
+build-full\tmp\work\armv8a-mx8mp-poky-linux\imx-m7-demos\2.14.1-r0\deploy-imx-m7-demos
+build-full\tmp\work\armv8a-mx8mp-poky-linux\imx-boot-firmware-files\8.22-r0\deploy-imx-boot-firmware-files
+build-full\tmp\work\imx8mp_gq-poky-linux\u-boot-imx\2023.04-r0\deploy-u-boot-imx
+build-full\tmp\work\imx8mp_gq-poky-linux\optee-os\4.0.0.imx-r0\deploy-optee-os
+build-full\tmp\work\imx8mp_gq-poky-linux\imx-atf\2.8+gitAUTOINC+08e9d4eef2-r0\deploy-imx-atf
+build-full\tmp\work\imx8mp_gq-poky-linux\imx-boot\1.0-r0\deploy-imx-boot
+build-full\tmp\work\imx8mp_gq-poky-linux\linux-imx\6.1.y+gitAUTOINC+de8d5a614f-r0\deploy-linux-imx
