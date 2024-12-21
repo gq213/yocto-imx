@@ -1,0 +1,12 @@
+diff -urN old/core/arch/arm/plat-imx/conf.mk new/core/arch/arm/plat-imx/conf.mk
+--- old/core/arch/arm/plat-imx/conf.mk	2024-12-18 22:20:25.378924000 +0800
++++ new/core/arch/arm/plat-imx/conf.mk	2024-12-18 22:27:59.366910096 +0800
+@@ -393,7 +393,7 @@
+ endif
+ 
+ ifneq (,$(filter $(PLATFORM_FLAVOR),mx8mpevk))
+-CFG_DDR_SIZE ?= UL(0x180000000)
++CFG_DDR_SIZE ?= UL(0x100000000)
+ CFG_UART_BASE ?= UART2_BASE
+ $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
+ $(call force,CFG_CORE_ARM64_PA_BITS,36)
