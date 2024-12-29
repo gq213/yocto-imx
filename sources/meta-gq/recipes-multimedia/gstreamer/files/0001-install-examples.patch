@@ -1,0 +1,12 @@
+diff -urN a/examples/meson.build b/examples/meson.build
+--- a/examples/meson.build	2023-09-21 01:10:57.000000000 +0800
++++ b/examples/meson.build	2024-12-27 22:48:13.368697981 +0800
+@@ -28,7 +28,7 @@
+     c_args : rtspserver_args,
+     include_directories : rtspserver_incs,
+     dependencies : [gst_dep, gstapp_dep, gstnet_dep, gst_rtsp_server_dep],
+-    install: false)
++    install: true)
+ endforeach
+ 
+ cgroup_dep = dependency('libcgroup', version : '>= 0.26', required : false)

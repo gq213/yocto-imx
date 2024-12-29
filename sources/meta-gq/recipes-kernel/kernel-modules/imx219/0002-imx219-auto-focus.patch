@@ -1,0 +1,546 @@
+diff -urN v4l2/focus/Makefile.orig v4l2/focus/Makefile
+--- v4l2/focus/Makefile.orig	2024-12-26 21:46:05.827198000 +0800
++++ v4l2/focus/Makefile	2024-12-28 11:40:21.197488000 +0800
+@@ -1,8 +1,11 @@
+ all:
+ 	@cd vcm_dw9790;  make || exit $$?;
++	@cd vcm_dw9714;  make || exit $$?;
+ 
+ clean:
+ 	@cd vcm_dw9790;  make clean;
++	@cd vcm_dw9714;  make clean;
+ 
+ modules_install:
+ 	@cd vcm_dw9790;  make modules_install;
++	@cd vcm_dw9714;  make modules_install;
+diff -urN v4l2/focus/vcm_dw9714/dw9714.c.orig v4l2/focus/vcm_dw9714/dw9714.c
+--- v4l2/focus/vcm_dw9714/dw9714.c.orig	1970-01-01 08:00:00.000000000 +0800
++++ v4l2/focus/vcm_dw9714/dw9714.c	2024-12-28 20:58:46.000000000 +0800
+@@ -0,0 +1,420 @@
++/****************************************************************************
++ *
++ * The MIT License (MIT)
++ *
++ * Copyright (c) 2021 VeriSilicon Holdings Co., Ltd.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ *****************************************************************************
++ *
++ * The GPL License (GPL)
++ *
++ * Copyright (c) 2021 VeriSilicon Holdings Co., Ltd.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program;
++ *
++ *****************************************************************************
++ *
++ * Note: This software is released under dual MIT and GPL licenses. A
++ * recipient may use this file under the terms of either the MIT license or
++ * GPL License. If you wish to use only one license not the other, you can
++ * indicate your decision by deleting one of the above license notices in your
++ * version of this file.
++ *
++ *****************************************************************************/
++#include <linux/acpi.h>
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/version.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include "vvfocus.h"
++
++#define DW9714_MIN_FOCUS_POS 0
++#define DW9714_MAX_FOCUS_POS 1023
++#define DW9714_FOCUS_STEPS 1
++#define DW9714_FOCUS_DEF 0
++
++struct dw9714_device {
++    uint32_t id;
++    char name[16];
++    struct v4l2_ctrl_handler ctrls_vcm;
++    struct v4l2_ctrl *focus;
++    struct v4l2_subdev sd;
++    struct mutex lock;
++    int32_t cur_pos;
++};
++
++static inline struct dw9714_device *sd_to_dw9714_device(struct v4l2_subdev *subdev)
++{
++	return container_of(subdev, struct dw9714_device, sd);
++}
++
++static inline struct dw9714_device *ctrl_to_dw9714_device(struct v4l2_ctrl *ctrl)
++{
++    return container_of(ctrl->handler, struct dw9714_device, ctrls_vcm);
++}
++
++static int  dw9714_i2c_write(struct dw9714_device *dw9714_dev, uint8_t addr, uint8_t *data, uint32_t size)
++{
++    struct i2c_client *client = v4l2_get_subdevdata(&dw9714_dev->sd);
++    int ret = 0;
++    uint8_t au8buf[3];
++
++    if ((size == 0) || (size > 2))
++         return -1;
++
++    au8buf[0] = addr;
++    au8buf[1] = *data;
++    if (size == 2) {
++        au8buf[2] = *(data + 1);
++    }
++
++    ret = i2c_master_send(client, au8buf, size + 1);
++    if (ret != size + 1) {
++        dev_err(dw9714_dev->sd.dev, "write dw9714 reg error : reg=%x, data=%x\n", addr, *data);
++        return -1;
++    }
++    return 0;
++}
++
++static int dw9714_i2c_read(struct dw9714_device *dw9714_dev, uint8_t addr, uint8_t *data)
++{
++    struct i2c_client *client = v4l2_get_subdevdata(&dw9714_dev->sd);
++    uint8_t reg = addr;
++    uint8_t value = 0;
++    int ret = 0;
++
++    ret = i2c_master_send(client, &reg, sizeof(reg));
++    if (ret != sizeof(reg)) {
++        dev_err(dw9714_dev->sd.dev, "read reg error: reg=%x\n", addr);
++        return -1;
++    }
++
++    ret = i2c_master_recv(client, &value, sizeof(value));
++    if (ret != sizeof(value)) {
++        dev_err(dw9714_dev->sd.dev, "read reg error: reg=%x, data=%x\n", addr, value);
++        return -1;
++    }
++    *data = value;
++    return 0;
++}
++
++static int dw9714_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	return pm_runtime_resume_and_get(sd->dev);
++}
++
++static int dw9714_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++    pm_runtime_put(sd->dev);
++    return 0;
++}
++
++static const struct v4l2_subdev_internal_ops dw9714_int_ops = {
++    .open = dw9714_open,
++    .close = dw9714_close,
++};
++
++static int dw9714_query_capability(struct dw9714_device *dw9714_dev, void *arg)
++{
++	struct v4l2_capability *pcap = (struct v4l2_capability *)arg;
++
++	strcpy((char *)pcap->driver, dw9714_dev->name);
++	snprintf(pcap->bus_info, sizeof(pcap->bus_info), "%d", dw9714_dev->id);
++	printk("%s-%d: [%s],[%s]\n", __FUNCTION__, __LINE__, pcap->driver, pcap->bus_info);
++	
++	return 0;
++}
++
++static int dw9714_get_range(struct dw9714_device *dw9714_dev, struct vvfocus_range_s *focus_range)
++{
++    focus_range->min_pos = DW9714_MIN_FOCUS_POS;
++    focus_range->max_pos = DW9714_MAX_FOCUS_POS;
++    focus_range->step    = DW9714_FOCUS_STEPS;
++    return 0;
++}
++
++static int dw9714_set_pos(struct dw9714_device *dw9714_dev, struct vvfocus_pos_s *pfocus_pos)
++{
++    int ret = 0;
++    int32_t len_pos;
++    uint8_t data[2];
++    if (pfocus_pos->mode == VVFOCUS_MODE_ABSOLUTE) {
++        len_pos = pfocus_pos->pos;
++    } else {
++        len_pos = pfocus_pos->pos + dw9714_dev->cur_pos;
++    }
++
++    if ((len_pos > DW9714_MAX_FOCUS_POS) ||
++        (len_pos < DW9714_MIN_FOCUS_POS))
++        return -1;
++
++    data[0] = len_pos >> 4;
++    data[1] = len_pos << 4;
++	printk("%s-%d: [0x%02x, 0x%02x]\n",__FUNCTION__, __LINE__, data[0], data[1]);
++    ret = dw9714_i2c_write(dw9714_dev, data[0], &data[1], 1);
++    if (ret < 0)
++        dev_err(dw9714_dev->sd.dev, "%s set ctrl failed\n", __func__);
++    else
++        dw9714_dev->cur_pos = len_pos;
++    return ret;
++}
++
++static int dw9714_get_pos(struct dw9714_device *dw9714_dev, struct vvfocus_pos_s *ppos)
++{
++    ppos->pos = dw9714_dev->cur_pos;
++    ppos->mode = VVFOCUS_MODE_ABSOLUTE;
++    return 0;
++}
++
++static long dw9714_priv_ioctl(struct v4l2_subdev *sd,
++                              unsigned int cmd,
++                              void *arg)
++{
++    struct dw9714_device *dw9714_dev = sd_to_dw9714_device(sd);
++    long ret = -1;
++    struct vvfocus_reg_s focus_reg;
++    struct vvfocus_range_s focus_range;
++    struct vvfocus_pos_s focus_pos;
++
++    if (!arg)
++        return -ENOMEM;
++
++    mutex_lock(&dw9714_dev->lock);
++        switch(cmd) {
++        case VIDIOC_QUERYCAP:
++            ret = dw9714_query_capability(dw9714_dev, arg);
++            break;
++        case VVFOCUSIOC_GET_RANGE:
++            ret = dw9714_get_range(dw9714_dev, &focus_range);
++            ret |= copy_to_user(arg, &focus_range, sizeof(struct vvfocus_range_s));
++            break;
++        case VVFOCUSIOC_GET_POS:
++            ret = dw9714_get_pos(dw9714_dev, &focus_pos);
++            ret |= copy_to_user(arg, &focus_pos, sizeof(struct vvfocus_pos_s));
++            break;
++        case VVFOCUSIOC_SET_POS:
++            ret = copy_from_user(&focus_pos, arg, sizeof(struct vvfocus_pos_s));
++            ret |= dw9714_set_pos(dw9714_dev, &focus_pos);
++            break;
++        case VVFOCUSIOC_GET_REG:
++            ret = copy_from_user(&focus_reg, arg, sizeof(struct vvfocus_reg_s));
++            ret |= dw9714_i2c_read(dw9714_dev, focus_reg.addr, (uint8_t *)&focus_reg.value);
++            ret |= copy_to_user(arg, &focus_reg, sizeof(struct vvfocus_reg_s));
++            break;
++        case VVFOCUSIOC_SET_REG:
++            ret = copy_from_user(&focus_reg, arg, sizeof(struct vvfocus_reg_s));
++            ret |= dw9714_i2c_write(dw9714_dev, focus_reg.addr, (uint8_t *)&focus_reg.value, 1);
++            break;
++        default:
++            ret = -1;
++            break;
++        }
++    mutex_unlock(&dw9714_dev->lock);
++
++    return ret;
++}
++
++static struct v4l2_subdev_core_ops adw9714_core_ops = {
++	.ioctl = dw9714_priv_ioctl,
++};
++
++static const struct v4l2_subdev_ops dw9714_ops = {
++    .core  = &adw9714_core_ops,
++};
++
++static int dw9714_set_ctrl(struct v4l2_ctrl *ctrl)
++{
++    struct dw9714_device *dw9714_dev = ctrl_to_dw9714_device(ctrl);
++    struct vvfocus_pos_s focus_pos;
++    int ret = 0;
++    if (ctrl->id == V4L2_CID_FOCUS_ABSOLUTE) {
++        focus_pos.mode = VVFOCUS_MODE_ABSOLUTE;
++        focus_pos.pos  = ctrl->val;
++        ret = dw9714_set_pos(dw9714_dev, &focus_pos);
++        return ret;
++    }
++    return -EINVAL;
++}
++
++static int dw9714_get_ctrl(struct v4l2_ctrl *ctrl)
++{
++    struct dw9714_device *dw9714_dev = ctrl_to_dw9714_device(ctrl);
++
++    if (ctrl->id == V4L2_CID_FOCUS_ABSOLUTE) {
++        ctrl->val = dw9714_dev->cur_pos;
++        return 0;
++    }
++    return -EINVAL;
++}
++
++static const struct v4l2_ctrl_ops dw9714_vcm_ctrl_ops = {
++    .s_ctrl = dw9714_set_ctrl,
++    .g_volatile_ctrl = dw9714_get_ctrl,
++};
++
++static int dw9714_init_controls(struct dw9714_device *dw9714_dev)
++{
++    struct v4l2_ctrl_handler *handler = &dw9714_dev->ctrls_vcm;
++    const struct v4l2_ctrl_ops *ops = &dw9714_vcm_ctrl_ops;
++    v4l2_ctrl_handler_init(handler, 1);
++    dw9714_dev->focus = v4l2_ctrl_new_std(handler, ops, V4L2_CID_FOCUS_ABSOLUTE,
++		DW9714_MIN_FOCUS_POS, DW9714_MAX_FOCUS_POS, DW9714_FOCUS_STEPS, DW9714_FOCUS_DEF);
++    if (handler->error)
++        dev_err(dw9714_dev->sd.dev, "%s fail error: 0x%x\n",__func__, handler->error);
++    dw9714_dev->sd.ctrl_handler = handler;
++
++    return handler->error;
++}
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
++static int dw9714_probe(struct i2c_client *client)
++#else
++static int dw9714_probe(struct i2c_client *client,
++                        const struct i2c_device_id *id)
++#endif
++{
++    struct dw9714_device *dw9714_dev;
++    struct device *dev = &client->dev;
++    int ret;
++
++    dw9714_dev = devm_kzalloc(&client->dev, sizeof(*dw9714_dev),
++				  GFP_KERNEL);
++    if (!dw9714_dev)
++        return -ENOMEM;
++
++    ret = of_property_read_u32(dev->of_node, "id", &dw9714_dev->id);
++    if (ret) {
++        dev_err(dev, "lens-focus id missing or invalid\n");
++        return ret;
++    }
++    memcpy(dw9714_dev->name, dev->of_node->name, strlen(dev->of_node->name));
++
++    v4l2_i2c_subdev_init(&dw9714_dev->sd, client, &dw9714_ops);
++    dw9714_dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	dw9714_dev->sd.internal_ops = &dw9714_int_ops;
++	dw9714_dev->sd.entity.function = MEDIA_ENT_F_LENS;
++
++    ret = dw9714_init_controls(dw9714_dev);
++    if (ret < 0)
++        goto err_cleanup;
++
++    ret = media_entity_pads_init(&dw9714_dev->sd.entity, 0, NULL);
++	if (ret < 0)
++        goto err_cleanup;
++
++    ret = v4l2_async_register_subdev(&dw9714_dev->sd);
++    if (ret < 0)
++        goto err_cleanup;
++
++    pm_runtime_enable(&client->dev);
++
++    mutex_init(&dw9714_dev->lock);
++
++    return 0;
++
++err_cleanup:
++    v4l2_ctrl_handler_free(&dw9714_dev->ctrls_vcm);
++    media_entity_cleanup(&dw9714_dev->sd.entity);
++    return ret;
++}
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
++static int dw9714_remove(struct i2c_client *client) 
++#else
++static void dw9714_remove(struct i2c_client *client)
++#endif
++{
++    struct v4l2_subdev *sd = i2c_get_clientdata(client);
++    struct dw9714_device *dw9714_dev = sd_to_dw9714_device(sd);
++
++    v4l2_async_unregister_subdev(&dw9714_dev->sd);
++    v4l2_ctrl_handler_free(&dw9714_dev->ctrls_vcm);
++    media_entity_cleanup(&dw9714_dev->sd.entity);
++
++    pm_runtime_disable(&client->dev);
++    mutex_destroy(&dw9714_dev->lock);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
++    return 0;
++#else
++#endif
++}
++
++static int __maybe_unused dw9714_vcm_suspend(struct device *dev) 
++{
++    return 0;
++}
++
++static int __maybe_unused dw9714_vcm_resume(struct device *dev)
++{
++    return 0;
++}
++
++static int __maybe_unused dw9714_vcm_runtime_suspend(struct device *dev)
++{
++    return 0;
++}
++
++static int __maybe_unused dw9714_vcm_runtime_resume(struct device *dev)
++{
++    return 0;
++}
++
++static const struct of_device_id dw9714_of_table[] = {
++    { .compatible = "imx,dw9714" },
++    { /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, dw9714_of_table);
++
++static const struct dev_pm_ops dw9714_pm_ops = {
++    SET_SYSTEM_SLEEP_PM_OPS(dw9714_vcm_suspend, dw9714_vcm_resume)
++    SET_RUNTIME_PM_OPS(dw9714_vcm_runtime_suspend, dw9714_vcm_runtime_resume, NULL)
++};
++
++static struct i2c_driver dw9714_i2c_driver = {
++    .driver = {
++		.owner = THIS_MODULE,
++		.name  = "dw9714",
++		.pm = &dw9714_pm_ops,
++		.of_match_table	= dw9714_of_table,
++	},
++	.probe  = dw9714_probe,
++	.remove = dw9714_remove,
++};
++
++
++module_i2c_driver(dw9714_i2c_driver);
++
++MODULE_DESCRIPTION("DW9714 vcm Driver");
++MODULE_LICENSE("GPL");
+diff -urN v4l2/focus/vcm_dw9714/Makefile.orig v4l2/focus/vcm_dw9714/Makefile
+--- v4l2/focus/vcm_dw9714/Makefile.orig	1970-01-01 08:00:00.000000000 +0800
++++ v4l2/focus/vcm_dw9714/Makefile	2024-12-28 11:54:32.133115000 +0800
+@@ -0,0 +1,36 @@
++PWD := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
++
++TARGET = vcm-dw9714
++
++obj-m +=$(TARGET).o
++$(TARGET)-objs += dw9714.o
++
++ccflags-y += -I$(PWD)/../../../common/
++ccflags-y += -O2 -Werror
++
++ARCH_TYPE ?= arm64
++ANDROID ?= no
++
++ifeq ($(ANDROID), yes)
++
++V := 1
++
++all:
++	@$(MAKE) V=$(V) -C $(KERNEL_SRC) ARCH=$(ARCH_TYPE) M=$(PWD) modules
++modules_install:
++	@$(MAKE) V=$(V) -C $(KERNEL_SRC) M=$(PWD) modules_install
++clean:
++	@rm -rf modules.order Module.symvers
++	@find ../ -name "*.o" | xargs rm -f
++	@find ../ -name "*.ko" | xargs rm -f
++
++else
++
++all:
++	make -C $(KERNEL_SRC) ARCH=$(ARCH_TYPE) M=$(PWD) modules
++modules_install:
++	make -C $(KERNEL_SRC) M=$(PWD) modules_install
++clean:
++	rm -rf $($(TARGET)-objs)
++	make -C $(KERNEL_SRC) M=$(PWD) clean
++endif
+diff -urN v4l2/sensor/imx219/imx219_mipi_v3.c.orig v4l2/sensor/imx219/imx219_mipi_v3.c
+--- v4l2/sensor/imx219/imx219_mipi_v3.c.orig	2023-10-12 17:29:48.000000000 +0800
++++ v4l2/sensor/imx219/imx219_mipi_v3.c	2024-12-28 20:58:41.000000000 +0800
+@@ -119,6 +119,7 @@
+ 	struct mutex lock;
+ 	u32 stream_status;
+ 	u32 resume_status;
++	vvcam_lens_t focus_lens;
+ };
+ 
+ static struct vvcam_mode_info_s pimx219_mode_info[] = {
+@@ -506,6 +507,19 @@
+ 	return ret;
+ }
+ 
++static int imx219_get_lens(struct imx219 *sensor, void * arg) {
++
++	vvcam_lens_t *pfocus_lens = (vvcam_lens_t *)arg;
++
++	if (!arg)
++		return -ENOMEM;
++
++	if (strlen(sensor->focus_lens.name) == 0)
++		return -1;
++
++	return copy_to_user(pfocus_lens, &sensor->focus_lens, sizeof(vvcam_lens_t));
++}
++
+ static int imx219_s_stream(struct v4l2_subdev *sd, int enable)
+ {
+ 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+@@ -741,6 +755,9 @@
+ 	case VVSENSORIOC_S_TEST_PATTERN:
+ 		ret= imx219_set_test_pattern(sensor, arg);
+ 		break;
++	case VVSENSORIOC_G_LENS:
++		ret = imx219_get_lens(sensor, arg);
++		break;
+ 	default:
+ 		break;
+ 	}
+@@ -809,6 +826,7 @@
+ 	struct imx219 *sensor;
+ 	u32 chip_id = 0;
+ 	u8 reg_val = 0;
++	struct device_node *lens_node;
+ 
+ 	pr_info("enter %s\n", __func__);
+ 
+@@ -866,6 +884,17 @@
+ 		return retval;
+ 	}
+ 
++	lens_node = of_parse_phandle(dev->of_node, "lens-focus", 0);
++	if (lens_node) {
++		retval = of_property_read_u32(lens_node, "id", &sensor->focus_lens.id);
++		if (retval) {
++			dev_err(dev, "lens-focus id missing or invalid\n");
++			return retval;
++		}
++		memcpy(sensor->focus_lens.name, lens_node->name, strlen(lens_node->name));
++		printk("%s-%d: [%s],[%d]\n", __FUNCTION__, __LINE__, sensor->focus_lens.name, sensor->focus_lens.id);
++	}
++
+ 	retval = imx219_power_on(sensor);
+ 	if (retval < 0) {
+ 		dev_err(dev, "%s: sensor power on fail\n", __func__);

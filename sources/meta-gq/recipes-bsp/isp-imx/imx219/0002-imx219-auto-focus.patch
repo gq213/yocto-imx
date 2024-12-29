@@ -1,0 +1,194 @@
+diff -urN a/units/isi/drv/IMX219/source/IMX219.c b/units/isi/drv/IMX219/source/IMX219.c
+--- a/units/isi/drv/IMX219/source/IMX219.c	2024-12-28 13:27:55.244851000 +0800
++++ b/units/isi/drv/IMX219/source/IMX219.c	2024-12-28 13:35:34.854085000 +0800
+@@ -66,8 +66,38 @@
+     IsiSensorGain_t SensorGain;
+     uint32_t minAfps;
+     uint64_t AEStartExposure;
++    int motor_fd;
++    uint32_t focus_mode;
+ } IMX219_Context_t;
+ 
++static inline int OpenMotorDevice(const vvcam_lens_t *pfocus_lens)
++{
++    int filep;
++    char szFile[32];
++    struct v4l2_capability caps;
++    for (int i = 0; i < 20; i++) {
++        sprintf(szFile, "/dev/v4l-subdev%d", i);
++        filep = open(szFile, O_RDWR | O_NONBLOCK);
++        if (filep < 0) {
++            continue;
++        }
++
++        if (ioctl(filep, VIDIOC_QUERYCAP, &caps) < 0) {
++            close(filep);
++            continue;
++        }
++
++        if (strcmp((char*) caps.driver, (char*) pfocus_lens->name)
++            || (atoi((char *)caps.bus_info) != pfocus_lens->id)) {
++            close(filep);
++            continue;
++        } else {
++            return filep;
++        }
++    }
++    return -1;
++}
++
+ static RESULT IMX219_IsiSensorSetPowerIss(IsiSensorHandle_t handle, bool_t on)
+ {
+     int ret = 0;
+@@ -1214,6 +1244,26 @@
+ static RESULT IMX219_IsiFocusSetupIss(IsiSensorHandle_t handle)
+ {
+     TRACE( IMX219_INFO, "%s (enter)\n", __func__);
++    
++    IMX219_Context_t *pIMX219Ctx = (IMX219_Context_t *) handle;
++    HalContext_t *pHalCtx = (HalContext_t *) pIMX219Ctx->IsiCtx.HalHandle;
++    vvcam_lens_t pfocus_lens;
++
++    if (ioctl(pHalCtx->sensor_fd, VVSENSORIOC_G_LENS, &pfocus_lens) < 0) {
++        TRACE(IMX219_ERROR, "%s  sensor do not have focus-lens \n", __func__);
++        return RET_NOTSUPP;
++    }
++
++    if (pIMX219Ctx->motor_fd <= 0) {
++        pIMX219Ctx->motor_fd = OpenMotorDevice(&pfocus_lens);
++        if (pIMX219Ctx->motor_fd < 0) {
++            TRACE(IMX219_ERROR, "%s open sensor focus-lens fail\n", __func__);
++            return RET_FAILURE;
++        }
++    } else {
++        TRACE(IMX219_INFO, "%s sensor focus-lens already open\n", __func__);
++    }
++
+     TRACE(IMX219_INFO, "%s: (exit)\n", __func__);
+     return RET_SUCCESS;
+ }
+@@ -1221,6 +1271,18 @@
+ static RESULT IMX219_IsiFocusReleaseIss(IsiSensorHandle_t handle)
+ {
+     TRACE( IMX219_INFO, "%s (enter)\n", __func__);
++
++    IMX219_Context_t *pIMX219Ctx = (IMX219_Context_t *) handle;
++
++    if (pIMX219Ctx->motor_fd <= 0) {
++        return RET_NOTSUPP;
++    }
++
++    if (close(pIMX219Ctx->motor_fd) < 0) {
++        TRACE(IMX219_ERROR,"%s close motor device failed\n", __func__);
++        return RET_FAILURE;
++    }
++
+     TRACE(IMX219_INFO, "%s: (exit)\n", __func__);
+     return RET_SUCCESS;
+ }
+@@ -1228,6 +1290,33 @@
+ static RESULT IMX219_IsiFocusGetIss(IsiSensorHandle_t handle, IsiFocusPos_t *pPos)
+ {
+     TRACE( IMX219_INFO, "%s (enter)\n", __func__);
++
++    struct v4l2_control ctrl;
++    IMX219_Context_t *pIMX219Ctx = (IMX219_Context_t *) handle;
++    
++    if (pIMX219Ctx->motor_fd <= 0) {
++        return RET_NOTSUPP;
++    }
++
++    memset(&ctrl, 0, sizeof(ctrl));
++    if (pIMX219Ctx->focus_mode & (1 << (pPos->mode))) {
++        if (pPos->mode == ISI_FOUCUS_MODE_ABSOLUTE) {
++            ctrl.id = V4L2_CID_FOCUS_ABSOLUTE;
++        } else if (pPos->mode == ISI_FOUCUS_MODE_RELATIVE) {
++            ctrl.id = V4L2_CID_FOCUS_RELATIVE;
++        }
++    } else {
++        TRACE(IMX219_ERROR, "%s invalid Focus mode %d\n", __func__, pPos->mode);
++        return RET_FAILURE;
++    }
++
++    if (ioctl(pIMX219Ctx->motor_fd, VIDIOC_G_CTRL, &ctrl) < 0) {
++        TRACE(IMX219_ERROR, "%s get moto pos failed\n", __func__);
++        return RET_FAILURE;
++    }
++
++    pPos->Pos = ctrl.value;
++
+     TRACE(IMX219_INFO, "%s: (exit)\n", __func__);
+     return RET_SUCCESS;
+ }
+@@ -1235,6 +1324,33 @@
+ static RESULT IMX219_IsiFocusSetIss(IsiSensorHandle_t handle, IsiFocusPos_t *pPos)
+ {
+     TRACE( IMX219_INFO, "%s (enter)\n", __func__);
++
++    struct v4l2_control ctrl;
++    IMX219_Context_t *pIMX219Ctx = (IMX219_Context_t *) handle;
++
++    if (pIMX219Ctx->motor_fd <= 0) {
++        return RET_NOTSUPP;
++    }
++
++    memset(&ctrl, 0, sizeof(ctrl));
++    if (pIMX219Ctx->focus_mode & (1 << (pPos->mode))) {
++        if (pPos->mode == ISI_FOUCUS_MODE_ABSOLUTE) {
++            ctrl.id = V4L2_CID_FOCUS_ABSOLUTE;
++            ctrl.value = pPos->Pos;
++        } else if (pPos->mode == ISI_FOUCUS_MODE_RELATIVE) {
++            ctrl.id = V4L2_CID_FOCUS_RELATIVE;
++            ctrl.value = pPos->Pos;
++        }
++    } else {
++        TRACE(IMX219_ERROR, "%s invalid Focus mode %d\n", __func__, pPos->mode);
++        return RET_FAILURE;
++    }
++
++    if (ioctl(pIMX219Ctx->motor_fd, VIDIOC_S_CTRL, &ctrl) < 0) {
++        TRACE(IMX219_ERROR, "%s set moto pos failed\n", __func__);
++        return RET_FAILURE;
++    }
++
+     TRACE(IMX219_INFO, "%s: (exit)\n", __func__);
+     return RET_SUCCESS;
+ }
+@@ -1242,8 +1358,36 @@
+ static RESULT IMX219_IsiGetFocusCalibrateIss(IsiSensorHandle_t handle, IsiFoucsCalibAttr_t *pFocusCalib)
+ {
+     TRACE( IMX219_INFO, "%s (enter)\n", __func__);
++
++    struct v4l2_queryctrl qctrl;
++    IMX219_Context_t *pIMX219Ctx = (IMX219_Context_t *) handle;
++    RESULT result = RET_SUCCESS;
++
++    if (pIMX219Ctx->motor_fd <= 0) {
++        return RET_NOTSUPP;
++    }
++
++    memset(&qctrl, 0, sizeof(qctrl));
++    qctrl.id = V4L2_CID_FOCUS_ABSOLUTE;
++    if (ioctl(pIMX219Ctx->motor_fd, VIDIOC_QUERYCTRL, &qctrl) >= 0) {
++            pIMX219Ctx->focus_mode |= 1 << ISI_FOUCUS_MODE_ABSOLUTE;
++            pFocusCalib->minPos = qctrl.minimum;
++            pFocusCalib->maxPos = qctrl.maximum;
++            pFocusCalib->minStep = qctrl.step;
++    } else {
++        qctrl.id = V4L2_CID_FOCUS_RELATIVE;
++        if (ioctl(pIMX219Ctx->motor_fd, VIDIOC_QUERYCTRL, &qctrl) >= 0) {
++                pIMX219Ctx->focus_mode |= 1 << ISI_FOUCUS_MODE_RELATIVE;
++                pFocusCalib->minPos = qctrl.minimum;
++                pFocusCalib->maxPos = qctrl.maximum;
++                pFocusCalib->minStep = qctrl.step;
++        } else {
++            result = RET_FAILURE;
++        }
++    }
++
+     TRACE(IMX219_INFO, "%s: (exit)\n", __func__);
+-    return RET_SUCCESS;
++    return result;
+ }
+ 
+ static RESULT IMX219_IsiGetAeStartExposureIs(IsiSensorHandle_t handle, uint64_t *pExposure)
