@@ -12,6 +12,9 @@ SSTATE_DIR ?= "${BSPDIR}/sstate-cache/"
 同时下载的进程个数，加速下载
 BB_NUMBER_THREADS = '16'
 2）下载所有包
+git config --global url."git@github.com:".insteadof https://github.com/
+git config --global --unset url.git@github.com:.insteadOf
+cat ~/.gitconfig
 bitbake imx-image-full --runall=fetch
 3）下载离线编译tf和onnx所需的包
 

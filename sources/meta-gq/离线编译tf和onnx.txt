@@ -20,6 +20,8 @@ cat ~/.gitconfig
 vi sources/meta-gq/conf/machine/imx8mp-gq.conf
 BB_NO_NETWORK = "1"
 
+git daemon --verbose --export-all --base-path=/mnt/disk/web/html/mydir/nxp/bare --enable=receive-pack
+
 qiang@ubuntu:/mnt/disk/web/html/mydir/nxp$ tree -L 2 bare
 bare
 ├── abseil

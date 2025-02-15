@@ -1,4 +1,4 @@
 
 UBOOT_SRC = "git://github.com/gq213/uboot-imx.git;protocol=https"
 SRCBRANCH = "master"
-SRCREV = "f76644f8470fdba97c9543feee71012928ca6659"
+SRCREV = "329596e561f304be5f31f035279af1ebdb858945"
