@@ -817,7 +817,7 @@
 +            <tolerance>20.1</tolerance>
 +            <weight>[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]</weight>
 +        </ae>
-+        <af enable="true">
++        <af enable="false">
 +            <algorithm oneshot="false">2</algorithm>
 +            <position>0</position>
 +            <mode>2</mode>

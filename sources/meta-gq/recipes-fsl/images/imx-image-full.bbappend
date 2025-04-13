@@ -4,6 +4,8 @@ SOC_DEFAULT_IMAGE_FSTYPES:append = " tar.xz"
 
 IMAGE_INSTALL:append = " file-overlay file-overlay-wpa-supplicant-gq file-overlay-insmod-ko"
 
+#CORE_IMAGE_EXTRA_INSTALL += "chromium-ozone-wayland"
+
 modify_rootfs() {
 	sed -i 's/Alias/#Alias/g' ${IMAGE_ROOTFS}/lib/systemd/system/wpa_supplicant.service
 	rm -r ${IMAGE_ROOTFS}/etc/resolv.conf

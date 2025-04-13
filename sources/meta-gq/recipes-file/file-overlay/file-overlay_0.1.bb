@@ -52,6 +52,7 @@ SYSTEMD_PACKAGES = "${PN}-wpa-supplicant-gq ${PN}-insmod-ko"
 
 SYSTEMD_SERVICE:${PN}-wpa-supplicant-gq = "wpa_supplicant-gq.service"
 SYSTEMD_SERVICE:${PN}-insmod-ko = "insmod_ko.service"
+SYSTEMD_AUTO_ENABLE:${PN}-wpa-supplicant-gq = "disable"
 
 FILES:${PN} = "/"
 
